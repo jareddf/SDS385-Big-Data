@@ -161,6 +161,17 @@ It works! First, results of simulated data. Let $y_i \sim N(\mu, 1), \, i=1,...,
 \begin{center}
 \includegraphics[width=6.5in]{ex02_2c_simple.pdf}
 \end{center}
+
+Now I attempt the algorithm for the WDBC data. 
+
+\begin{center}
+\includegraphics[width=6.5in]{ex02_2c_wdbc.pdf}
+\end{center}
+
+As can be seen above, the norm of the change in $\beta$ is faulty as a convergence criteria and prematurely terminates the optimization loop. Also, as $n$ and $p$ become large, using the full $\beta$ vector and/or all of the data seems wasteful. So, we look at changing the convergence criteria to the change in the exponentially weighted average log likelihood. But, as can be seen below, this convergence criteria struggles to actually converge, and is very sensitive to the smoothing parameter $\alpha$. 
+\begin{center}
+\includegraphics[width=6.5in]{ex02_2c_EMA.pdf}
+\end{center}
 \color{black}
 
 \item Now try a decaying step size.  Specifically, use the \url{https://en.wikipedia.org/wiki/Stochastic_approximation}{Robbins--Monro} rule for step sizes:
@@ -171,6 +182,13 @@ where $C > 0$, $\alpha \in [0.5, 1]$, and $t_0$ (the ``prior number of steps'') 
 
 Implement the Robbins-Monro rule in your SGD code. Pick a smallish $t_0$ (1 or 2) and run with it.   Fiddle around with $C$ and $\alpha$ to see if you can get good performance. 
 
+\color{blue}
+After trying a range of different values for likelihood smoothing and Robbins-Monro step parameters C, $\alpha$. Using EMA alpha = .005 (for likelihood smoothing), I present the convergence results of a grid of parameter values. It's challenging to find the right combinations of parameter values such that the algorithm realizes it has converged. 
+\begin{center}
+\includegraphics[width=6.5in]{ex02_2d.pdf}
+\end{center}
+\color{black}
+
 \item Finally, try the following averaging approach.  Keep the updating scheme exactly as before.  But now, instead of reporting the iterates $\beta^{(t)}$, report the time-averaged iterates
 $$
 \bar{\beta}^{(t)} = \frac{1}{t} \sum_{k=0}^{t-1} \beta^{(k)} \, .
@@ -178,6 +196,13 @@ $$
 To be clear: you don't use this formula to actually compute the updates, which are exactly the same as before.  You merely use it to report the final answer, and to track the log-likelihood of the intermediate answers as the algorithm proceeds.  Moreover, you might want to start this averaging after an initial burn-in period.
 
 This scheme is called \textit{Polyak--Ruppert} averaging.  Does it seem to improve matters?
+
+\color{blue}
+It might help, but the step size choice still seems almost arbitrary. Also, the optimization still struggles to realize when it's converged and only oscillating in place... 
+\begin{center}
+\includegraphics[width=6.5in]{ex02_2e.pdf}
+\end{center}
+\color{black}
 
 \end{enumerate}
 
