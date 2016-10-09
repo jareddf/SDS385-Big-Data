@@ -295,6 +295,7 @@ fast.sgd = function(
   , max.iter=1000
   , min.iter=1
   , tol=.001
+ # , lik.penalty = 1
   #  , Polyak.Ruppert.burn
   , ...){
   
@@ -333,16 +334,16 @@ fast.sgd = function(
   beta <- oldbeta <- starting.values
   # Function at starting values
   output$FunctionValue[1] = convex.function(beta, data[1,,drop=F], previous = NA, function.smoothing.factor = function.smoothing.factor)
-  
+              #lik.penalty = lik.penalty,
   
   # Loop
   for(i in 1:max.iter){
     
     # Stochastic piece: reads through in order ###! can remove this 
-    output$RandomChoice[i+1] <- choice <- i %% nn
+    output$RandomChoice[i+1] <- choice <- sample(1:nn,1)#i %% nn
     
     # Find gradient at current beta
-    gradient = gradient.function(beta = beta, data = data[choice,,drop=F])
+    gradient = gradient.function(beta = beta, data = data[choice,,drop=F])#, lik.penalty = lik.penalty)
     
     # Direction
     adagrad.diag = adagrad.diag + (gradient)^2
@@ -373,10 +374,11 @@ fast.sgd = function(
     
     # Measure target function (Log Likeihood) of new beta - using only given point (and previous, for ). Requires averaged target function
     output$FunctionValue[i+1] = convex.function(
-      beta = beta, 
-      data = data[choice,,drop=F], 
-      previous = output$FunctionValue[i], 
-      function.smoothing.factor = function.smoothing.factor
+      beta = beta
+      ,data = data[choice,,drop=F]
+      ,previous = output$FunctionValue[i]
+      ,function.smoothing.factor = function.smoothing.factor
+      #,lik.penalty = lik.penalty
     )
     
     # Stopping criteria
@@ -391,7 +393,7 @@ fast.sgd = function(
 
 
 
-wrapper.logreg.negative.gradient = function(beta, data){
+wrapper.fast.logreg.negative.gradient = function(beta, data, lik.penalty=1){
   # function for use within optimization (minimization) function. 
   # Input: beta vector, data matrix where first column is response variable Y
   # Output: negative gradient of log binomial likelihood for logistic regression
@@ -404,12 +406,12 @@ wrapper.logreg.negative.gradient = function(beta, data){
   w.hat = predict.logistic(X=X, beta=beta)
   
   # Compute and return negative gradient
-  gradient = negative.logistic.gradient(y=y, X=X, w=w.hat, m=1)
+  gradient = negative.penalized.logistic.gradient(y=y, X=X, w=w.hat, beta = beta, lik.penalty = lik.penalty)
   return(gradient)
 }
 
 
-wrapper.logreg.negative.likelihood.EMA = function(beta, data, previous = NA, function.smoothing.factor = 1){
+wrapper.fast.logreg.negative.likelihood.EMA = function(beta, data, lik.penalty=1, previous = NA, function.smoothing.factor = 1){
   # wrapper of functions for use within optimization function. 
   # Input: beta vector, data matrix where first column is response variable Y
   # Output: log binomial likelihood for logistic regression
@@ -423,7 +425,7 @@ wrapper.logreg.negative.likelihood.EMA = function(beta, data, previous = NA, fun
   w.hat = predict.logistic(X=X, beta=beta)
   
   # Calculate and return negative likelihood 
-  lik = -binomial.log.likelihood(y=Y, w=w.hat)
+  lik = -penalized.binomial.log.likelihood(y=Y, w=w.hat, beta=beta, lik.penalty=lik.penalty)
   
   # Exponential moving average, alpha = function.smoothing.factor. But l1 = l1
   if(is.na(previous)){
@@ -434,18 +436,34 @@ wrapper.logreg.negative.likelihood.EMA = function(beta, data, previous = NA, fun
   }
 }
 
+library(Rcpp)
+cppFunction('
+            double logBinomialLikelihood(NumericVector y, NumericVector w, NumericVector beta, double penalty = 0, double adjustment = .00001) {
+            
+            int nn = y.size();
+            int pp = beta.size();
+            double sumout = 0;
+            double sumbeta2 = 0;
+            NumericVector m(nn);
+            
+            for(int i = 0; i < nn; i++) {
+            m[i] = 1;
+            sumout += y[i]*log(w[i] + adjustment) + (m[i] - y[i])*log(1 - w[i] + adjustment);
+            }
+            
+            for(int j = 0; j < pp; j++){
+            sumbeta2 +=  beta[j] * beta[j];
+            }
+            
+            sumout = sumout - penalty * sumbeta2;
+            return sumout;
+            }
+            ')
 
-binomial.log.likelihood.fast = function(y, w, m=1, adjustment=.00001){
-  # Returns the binomial log likelihood, short the constant term. 
-  # An adjustment is added within the logs to avoid numerical instability
-  sum(y*log(w+adjustment) + (m-y)*log(1-w+adjustment))
+
+
+negative.penalized.logistic.gradient = function(y, X, w, beta, lik.penalty=1){
+  -( t(X)%*%(y - w) ) + 2*lik.penalty*sum(beta) 
 }
 
-negative.logistic.gradient = function(y, X, w, m=1){
-  -t(X)%*%(y - w*m)
-}
 
-predict.logistic = function(X, beta){
-  #equivalent to $w_i(\beta)$ in writeup
-  1/(1+exp(-X%*%beta))
-}

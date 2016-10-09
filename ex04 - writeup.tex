@@ -1,4 +1,4 @@
-  \documentclass{article}
+\documentclass{article}
 \usepackage{amsmath,bm}
 \usepackage[margin=1in]{geometry}
 \usepackage{graphicx}
@@ -85,7 +85,7 @@ You then repeat this every so often to refresh the step size, which will end up 
 Note: this way of choosing the step size based on a minibatch is \textit{almost} exactly the same as line search for regular gradient descent, treating that minibatch as the full data set.  The only difference is that the search direction vector is the \textit{average} gradient contribution for all the observations in the minibatch, rather than the sum of all gradient contributions.  These two vectors have the same direction but different length.  You need the one whose length scales like that of a single $g_t$ vector---and thus the average---to get the right step size for gradient-descent steps based on a single $g_t$.
 
 \color{blue}
-Here, I run backtracking line search every 50 iterations, using 50 data points. There are a lot of ``parameters'' to calibrate. $\alpha_0$, $c$, $\rho$ for the line search, the likelihood smoothing factor $\alpha$, the Polyak-Ruppert burn in size, the tolerance level, and of course the size and frequency of minibatch step sizes. 
+Here, I run backtracking line search every 50 iterations, using 50 data points. There are a lot of ``parameters'' to calibrate. $\alpha_0$, $c$, $\rho$ for the line search, the likelihood smoothing factor $\alpha$, the Polyak-Ruppert burn in size, the tolerance level, and of course the size and frequency of minibatch step sizes. With some tuning work though, the minimization converges fairly quickly. 
 
 \begin{center}
 \includegraphics[width=4in]{ex04_1a.pdf}
@@ -147,7 +147,7 @@ The AdaGrad rule for tuning the SGD step size was originally proposed in a paper
 And of course, Google is your friend.  Read up on AdaGrad and implement it.  How does it work for when used on one of your earlier, familiar data sets?
 \\
 \color{blue}
-Seems reasonable, but for this WDBC dataset, is not exceptional. 
+Below is the convergence using the Adagrad update. It seems reasonable, but for this WDBC dataset, is not exceptional. 
 \begin{center}
 \includegraphics[width=4in]{ex04_1b.pdf}
 \end{center}
@@ -176,16 +176,49 @@ Once you've got your code up and running (using either AdaGrad or minibatch line
 
 The course web page gives you some pointers and code for pre-processing this data.  And remember, you can probably learn a lot from your classmates on this one.
 
-\end{document}
+\color{blue}
+First I perform a comparison using my dense sgd function in Rcpp. The Rcpp function performs 20,000 SGD iterations 2600 times faster than standard R code on the dense wdbc cancer dataset. I continue with some modifications to previous SGD implementations. First, the likelihood can be simplified to reduce computations, as shown below. 
 
+% expr        min          lq        mean      median          uq
+ %RRR() 6985.63830 7045.724367 7179.262170 7100.346439 7183.282365
+ %CCC()    2.59607    2.633074    2.726656    2.705148    2.828924
+        
+\begin{align*}
+\ell (\beta) &= y log(w) + (m-y)log(1-w)\\
+&= y log\left(\frac{exp\{X\beta\}}{1+exp\{X\beta\}}\right) + (m-y)log\left(\frac{1}{1+exp\{X\beta\}}\right)\\
+&= y log\left(exp\{X\beta\}\right)  - y log\left(1+exp\{X\beta\}\right) + (y-m)log\left(1+exp\{X\beta\}\right)\\
+&= y X\beta  - y log\left(1+exp\{X\beta\}\right) + y log\left(1+exp\{X\beta\}\right)-m log\left(1+exp\{X\beta\}\right)\\
+&= y X\beta  -m log\left(1+exp\{X\beta\}\right)\\
+\end{align*}
 
+Next, I'm not yet comfortable with the notions of lazy updating put forward in class. So here's my take, for step size $\gamma$ and likelihood penalty $\lambda$, with $t$ indicating the global iteration, where $\beta_j$ was updated at $t$. For simplification, let this be the first pass through the data, so that $t=i$.
 
+\begin{align*}
+\beta_j^{t+1} &=\beta_j^t - \gamma [\nabla \ell(\beta)]_j \\
+&=\beta_j^t - \gamma \frac{(\hat{y}_{i+1}^t - y_{i+1})x_{i+1,j} + 2 \lambda \beta_j^t}{\sqrt{G_{jj}^t + \epsilon}} \\
+&=\beta_j^t - \gamma \frac{2 \lambda \beta_j^t}{\sqrt{G_{jj}^t + \epsilon}} & \text{let }x_{i+1,j}=0\\
+&=\left(1 - \gamma \frac{2 \lambda}{\sqrt{G_{jj}^t + \epsilon}}\right)\beta_j^t\\
+\Rightarrow \beta_j^{t+2} &= \left(1 - \gamma \frac{2 \lambda}{\sqrt{G_{jj}^{t+1} + \epsilon}}\right)\beta_j^{t+1} & \text{similarly, let }x_{i+2,j} = 0 \\
+ &= \left(1 - \gamma \frac{2 \lambda}{\sqrt{G_{jj}^{t+1} + \epsilon}}\right)\left(1 - \gamma \frac{2 \lambda}{\sqrt{G_{jj}^t + \epsilon}}\right)\beta_j^t \\
+\Rightarrow \beta_j^{t+3} &= \beta_j^{t+2} - \gamma \frac{(\hat{y}_{i+3}^{t+2} - y_{i+3})x_{i+3,j} + 2 \lambda \beta_j^{t+2}}{\sqrt{G_{jj}^{t+2} + \epsilon}} & \text{for }x_{i+3,j} \ne 0 \\
+\end{align*}
 
+Should the diagonal of the approximated Hessian $G$ for the Adagrad update be the sum of the likelihood evaluations, or that of the penalized likelihood? If not including the penalty, then $G_{jj}$ doesn't update when $x_{ij} =0$, so the lazy update here clearly would be 
+$$\beta_j^{t+2} = \left(1 - \gamma \frac{2 \lambda}{\sqrt{G_{jj}^t + \epsilon}}\right)^2 \beta_j^t $$
+and this holds if we let $G$ be a ``stale'' approximation even if we include the penalty in the updates to $G$.  So, when updating $\beta_j^{t+k}$ after last updating at $t$, there were $k-1$ iterations where $x_{ij} = 0$, and the lazy update should be to the power of $k-1$. 
 
+HOWEVER, this update struggles with numerical instability. So, for the sake of time, I use the ``hack'' variation of my derivation above. 
+$$\beta_j^{t+k} = \left(1 - k\gamma \frac{2 \lambda}{\sqrt{G_{jj}^t + \epsilon}}\right)\beta_j^t $$
 
+\begin{center}
+\includegraphics{ex04_2.pdf}
+\end{center}
+My SGD runs in 11.393 seconds, which is comparable to the 12.743 seconds required for the benchmark (James' SGD).  Including invSqrt() function does not increase speed. This seems odd to me. When it comes to choosing the appropriate constant $\lambda$ for the $l2$ likelihood penalty, we perform cross validation. 70\% of the observations are randomly chosen to be in the training set, and the remainder are in the testing dataset. At each different $\lambda$, I take 2 passes through the data to improve the parameter estimates. There's a jump in the negative log likelihood around the break between datasets, but it happens over thousands of iterations, not the single transition iteration between passes. 
 
-
-
+\begin{center}
+\includegraphics{ex04_2b.pdf}
+\end{center}
+    
 \end{document}
 
 
