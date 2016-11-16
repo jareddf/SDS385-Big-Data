@@ -1,0 +1,147 @@
+\documentclass{article}
+\usepackage{amsmath,bm,mathtools}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{enumerate}
+\usepackage{color}
+\usepackage{url}
+
+% The units package provides nice, non-stacked fractions and better spacing for units.
+\usepackage{units}
+% The following package makes prettier tables.  We're all about the bling!
+\usepackage{booktabs}
+% Small sections of multiple columns
+\usepackage{multicol}
+% Provides paragraphs of dummy text
+\usepackage{lipsum}
+
+
+
+\setkeys{Gin}{width=\linewidth,totalheight=\textheight,keepaspectratio}
+\graphicspath{{graphics/}}
+
+% The following package makes prettier tables.  We're all about the bling!
+\usepackage{booktabs}
+
+
+
+% The units package provides nice, non-stacked fractions and better spacing
+% for units.
+\usepackage{units}
+
+% The fancyvrb package lets us customize the formatting of verbatim
+% environments.  We use a slightly smaller font.
+\usepackage{fancyvrb}
+\fvset{fontsize=\normalsize}
+
+% Small sections of multiple columns
+\usepackage{multicol}
+
+% Provides paragraphs of dummy text
+\usepackage{lipsum}
+
+% These commands are used to pretty-print LaTeX commands
+\newcommand{\doccmd}[1]{\texttt{\textbackslash#1}}% command name -- adds backslash automatically
+\newcommand{\docopt}[1]{\ensuremath{\langle}\textrm{\textit{#1}}\ensuremath{\rangle}}% optional command argument
+\newcommand{\docarg}[1]{\textrm{\textit{#1}}}% (required) command argument
+\newenvironment{docspec}{\begin{quote}\noindent}{\end{quote}}% command specification environment
+\newcommand{\docenv}[1]{\textsf{#1}}% environment name
+\newcommand{\docpkg}[1]{\texttt{#1}}% package name
+\newcommand{\doccls}[1]{\texttt{#1}}% document class name
+\newcommand{\docclsopt}[1]{\texttt{#1}}% document class option name
+
+\newcommand{\N}{\mbox{N}}
+\newcommand{\thetahat}{\hat{\theta}}
+\newcommand{\sigmahat}{\hat{\sigma}}
+\newcommand{\betahat}{\hat{\beta}}
+
+\newcommand{\E}{\mbox{E}}
+\newcommand{\prox}{ \mathop{\mathrm{prox}} }
+\newcommand{\enorm}[1]{\Vert #1 \Vert_2}
+
+\begin{document}
+
+\large 
+\begin{center}
+Exercises 7: Alternating Direction Method of Multipliers\\
+\vspace{10pt}
+Jared Fisher\\
+Last Updated \today
+\end{center}
+\normalsize
+
+
+\bigskip
+
+\section{Derivation}
+Lasso regression invokes the following optimization problem. 
+\begin{eqnarray}
+\text{minimize} && \frac{1}{2} ||X\beta - y||^2_2 + \lambda ||\beta||_1
+\end{eqnarray}
+This can be rewritten into
+\begin{eqnarray*}
+\text{minimize} && \frac{1}{2} ||X\beta - y||^2_2 + \lambda ||\gamma||_1\\
+\text{subject to} && \beta - \gamma = 0
+\end{eqnarray*}
+in order to align with ADMM form. Thus, the augmented Lagrangian is 
+\begin{eqnarray*}
+L_\rho(\beta,\gamma,v) &=& \frac{1}{2} ||X\beta - y||^2_2 + \lambda ||\gamma||_1 + v^T( \beta - \gamma) + \frac{\rho}{2} || \beta - \gamma||^2_2.
+\end{eqnarray*}
+
+This means our Lasso ADMM has the following iterations:
+\begin{eqnarray*}
+\beta^{k+1} &:=& arg\min_{\beta} L_\rho(\beta,\gamma^k,v^k) \\
+\gamma^{k+1} &:=& arg\min_{\gamma} L_\rho(\beta^{k+1},\gamma,v^k) \\
+v^{k+1} &:=& v^k + \rho ( \beta^{k+1} - \gamma^{k+1}). \\
+\end{eqnarray*}
+
+Now to evaluate the argmin's. 
+\begin{eqnarray*}
+ arg\min_{\beta} L_\rho(\beta,\gamma^k,v^k) 
+&=& arg\min_{\beta} \frac{1}{2} ||X\beta - y||^2_2 + v^T\beta + \frac{\rho}{2} || \beta - \gamma||^2_2 \\
+\Rightarrow 0 &\stackrel{set}{=}& \frac{\partial}{\partial\beta}  \left[ \frac{1}{2} ||X\beta - y||^2_2 + v^T\beta + \frac{\rho}{2} || \beta - \gamma||^2_2 \right]\\
+0 & = &  X^T(X\beta - y) + v + \rho ( \beta - \gamma)\\
+0 & = &  X^TX\beta - X^Ty + v +  \rho\beta - \rho\gamma\\
+X^TX\beta +\rho\beta & = &    X^Ty - v +  \rho\gamma\\
+(X^TX +\rho I) \beta & = &    X^Ty - v +  \rho\gamma\\
+ \beta & = &    (X^TX +\rho I)^{-1}(X^Ty - v +  \rho\gamma) \\
+ arg\min_{\beta} L_\rho(\beta,\gamma^k,v^k) 
+&=& (X^TX +\rho I)^{-1}(X^Ty - v +  \rho\gamma) \\
+\end{eqnarray*}
+AND
+\begin{eqnarray*}
+ arg\min_{\gamma} L_\rho(\beta^{k+1},\gamma,v^k) 
+&=& arg\min_{\gamma}  \lambda ||\gamma||_1 - v^T \gamma + \frac{\rho}{2} || \beta - \gamma||^2_2 \\
+&=& arg\min_{\gamma}  \lambda ||\gamma||_1 - v^T \gamma + \frac{\rho}{2} \gamma^T\gamma + - \rho\beta^T\gamma \\
+&=& arg\min_{\gamma}  \lambda ||\gamma||_1 - (v^T + \rho\beta^T) \gamma + \frac{\rho}{2} \gamma^T\gamma \\
+&=& arg\min_{\gamma}  \frac{\lambda}{\rho} ||\gamma||_1 - \left( \frac{1}{\rho}v^T + \beta^T \right) \gamma + \frac{1}{2} \gamma^T\gamma \\
+&=& arg\min_{\gamma} \frac{\lambda}{\rho} ||\gamma||_1 + \frac{1}{2} \left| \left| \gamma - \left(\frac{1}{\rho}v + \beta \right) \right| \right|^2_2   \quad \text{a la proof from ex06}\\
+&=& S_{\lambda/\rho}\left(\frac{1}{\rho}v + \beta\right) 
+\end{eqnarray*}
+
+We can also use the scaled augmented Lagrangian to get the same solutions as in the text (\url{http://stanford.edu/~boyd/papers/pdf/admm_distr_stats.pdf}). Let $u = (1/\rho)v$. Then 
+
+\begin{eqnarray*}
+\beta^{k+1} &:=& (X^TX +\rho I)^{-1}(X^Ty - \rho u +  \rho\gamma)  \\
+&=& (X^TX +\rho I)^{-1}(X^Ty + \rho(\gamma - u)  ) \\
+\gamma^{k+1} &:=& S_{\lambda/\rho}\left(u + \beta\right)  \\
+v^{k+1} &:=& v^k + \beta^{k+1} - \gamma^{k+1}. \\
+\end{eqnarray*}
+
+
+Lastly, note the stopping rules.  For $\epsilon_r,\epsilon_s > 0$,
+\begin{eqnarray*}
+||r||_2 < \epsilon_r ,&& r := \beta - \gamma \\
+||s||_2 < \epsilon_s ,&& s := -\rho(z^{k+1} - z^k).  \\
+\end{eqnarray*}
+
+\section{Implementation}
+The assignment this week is simple: implement ADMM for fitting the lasso regression model, and compare it to your proximal gradient implementation from last week. The application of ADMM to the lasso model is described in Section 6.4 of the Boyd et. al. paper.
+In the exercises to follow, we'll use ADMM again for several other problems, including spatial smoothing.
+
+
+
+\end{document}
+
+
+
